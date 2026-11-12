@@ -1,0 +1,16 @@
+{{- $servers := list }}
+{{- range $i, $s := .Values.mcp.servers }}
+{{- $e := dict "name" $s.name "urlEnv" (printf "MCP_%d_URL" $i) }}
+{{- if $s.bearerSecret }}{{ $_ := set $e "bearerEnv" (printf "MCP_%d_TOKEN" $i) }}{{ end }}
+{{- if $s.readOnly }}{{ $_ := set $e "readOnly" true }}{{ end }}
+{{- if $s.allowedTools }}{{ $_ := set $e "allowedTools" $s.allowedTools }}{{ end }}
+{{- $servers = append $servers $e }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.service.name }}
+data:
+  mcp.json: |
+    {{ toJson $servers }}
+  system-prompt: {{ .Values.llm.systemPrompt | quote }}

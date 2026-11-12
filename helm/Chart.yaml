@@ -1,0 +1,4 @@
+apiVersion: v2
+name: matrix-ai-bot
+description: A Matrix bot answering with an OpenAI-compatible LLM and MCP tools
+version: 0.1.0

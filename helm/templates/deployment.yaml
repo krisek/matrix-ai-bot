@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.service.name }}
+  labels:
+    app: {{ .Values.service.name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ .Values.service.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.service.name }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: matrix-ai-bot
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/matrix-ai-bot
+          env:
+            - name: MCP_CONFIG
+              value: /etc/matrix-ai-bot/mcp.json
+            - name: SYSTEM_PROMPT_FILE
+              value: /etc/matrix-ai-bot/system-prompt
+            - name: CALLWORD
+              value: {{ .Values.bot.callword | quote }}
+            - name: MAX_HISTORY
+              value: {{ .Values.bot.maxHistory | quote }}
+            - name: MAX_TOOL_ROUNDS
+              value: {{ .Values.bot.maxToolRounds | quote }}
+            - name: MAX_TOOL_RESULT_CHARS
+              value: {{ .Values.bot.maxToolResultChars | quote }}
+            - name: LLM_TIMEOUT_SECONDS
+              value: {{ .Values.bot.llmTimeoutSeconds | quote }}
+            - name: LLM_BASE_URL
+              value: {{ .Values.llm.baseUrl | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.llm.model | quote }}
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.apiKeySecret.name }}
+                  key: {{ .Values.llm.apiKeySecret.key }}
+            {{- range $k := list "MATRIX_URL" "MATRIX_USER" "MATRIX_PASS" }}
+            - name: {{ $k }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.matrixSecretName }}
+                  key: {{ $k }}
+            {{- end }}
+            {{- range $i, $s := .Values.mcp.servers }}
+            - name: MCP_{{ $i }}_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $s.urlSecret.name }}
+                  key: {{ $s.urlSecret.key }}
+            {{- if $s.bearerSecret }}
+            - name: MCP_{{ $i }}_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $s.bearerSecret.name }}
+                  key: {{ $s.bearerSecret.key }}
+            {{- end }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.service.name }}
