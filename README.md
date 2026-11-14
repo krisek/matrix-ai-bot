@@ -6,6 +6,9 @@ Single static Go binary, no `aichat` or other CLI needed.
 
 - `@ai <question>` asks; every room has its own memory (last `maxHistory` messages).
 - `@ai /reset` clears the room's memory.
+- `@ai /listen` makes the bot answer **every** message in that room (no callword needed);
+  `@ai /silence` turns it off again. Commands always need the callword. The mode is per room
+  and, like the memory, is lost on restart.
 - Works in every room the bot is in; it auto-joins on invite.
 - Tool calls loop (max `maxToolRounds`) until the model produces a final answer.
 - MCP tools are writable by default; set `readOnly: true` on a server to expose only
@@ -34,15 +37,17 @@ Create the secret in the namespace of wisebalance-bot:
 ```sh
 kubectl create secret generic matrix-ai-bot-secrets \
   --from-literal=LLM_API_KEY=... \
-  --from-literal=MCP_AUDIOLOADER_URL=https://al.example.com/SECRET/mcp
+  --from-literal=MCP_URL_AUDIOLOADER=https://al.example.com/mcp/SECRET
 helm upgrade --install matrix-ai-bot helm -f my-values.yaml
 ```
+
+Example my-values.yaml:
 
 ```yaml
 mcp:
   servers:
     - name: audioloader
-      urlSecret: {name: matrix-ai-bot-secrets, key: MCP_AUDIOLOADER_URL}
+      urlSecret: {name: matrix-ai-bot-secrets, key: MCP_URL_AUDIOLOADER}
 ```
 
 Tool names are exposed to the model as `<server>_<tool>`.

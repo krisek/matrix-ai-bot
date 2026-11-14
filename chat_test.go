@@ -102,3 +102,41 @@ func TestSanitizeSchema(t *testing.T) {
 		t.Fatalf("empty schema: %v", e)
 	}
 }
+
+func TestListenMode(t *testing.T) {
+	var seen [][]Message
+	var mu sync.Mutex
+	llmSrv := fakeLLM(t, &seen, &mu)
+	defer llmSrv.Close()
+	cfg := &Config{Callword: "@ai", LLMBaseURL: llmSrv.URL, LLMModel: "m", LLMAPIKey: "k",
+		SystemPrompt: "sys", MaxHistory: 10, MaxToolRounds: 3, LLMTimeout: 5 * time.Second}
+	chat := NewChat(cfg, NewLLM(cfg, &Tools{route: map[string]route{}}))
+	ctx := context.Background()
+
+	if got := chat.Handle(ctx, "!r", "plain message"); got != "" {
+		t.Fatalf("must ignore before /listen, got %q", got)
+	}
+	if got := chat.Handle(ctx, "!r", "@ai /listen"); !strings.HasPrefix(got, "Listening") {
+		t.Fatalf("listen got %q", got)
+	}
+	if got := chat.Handle(ctx, "!r", "no callword needed"); got != "plain" {
+		t.Fatalf("listening should answer, got %q", got)
+	}
+	// other rooms are unaffected
+	if got := chat.Handle(ctx, "!other", "hello"); got != "" {
+		t.Fatalf("other room must stay silent, got %q", got)
+	}
+	// a bare /silence without callword is just a prompt, not a command
+	if got := chat.Handle(ctx, "!r", "/silence"); got != "plain" {
+		t.Fatalf("bare /silence must be a prompt, got %q", got)
+	}
+	if got := chat.Handle(ctx, "!r", "@ai /silence"); !strings.HasPrefix(got, "Silenced") {
+		t.Fatalf("silence got %q", got)
+	}
+	if got := chat.Handle(ctx, "!r", "ignored again"); got != "" {
+		t.Fatalf("must ignore after /silence, got %q", got)
+	}
+	if got := chat.Handle(ctx, "!r", "@ai still works"); got != "plain" {
+		t.Fatalf("callword must still work, got %q", got)
+	}
+}

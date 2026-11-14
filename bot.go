@@ -20,7 +20,8 @@ type Chat struct {
 
 type roomState struct {
 	sync.Mutex
-	history []Message
+	history   []Message
+	listening bool // answer every message, not only those with the callword
 }
 
 func NewChat(cfg *Config, llm *LLM) *Chat {
@@ -55,18 +56,40 @@ func parseCommand(body, callword string) (rest string, ok bool) {
 
 // Handle processes one message and returns the reply ("" means no reply).
 func (c *Chat) Handle(ctx context.Context, roomID, body string) string {
-	rest, ok := parseCommand(body, c.cfg.Callword)
-	if !ok {
-		return ""
-	}
 	r := c.room(roomID)
 	r.Lock()
 	defer r.Unlock()
 
+	rest, ok := parseCommand(body, c.cfg.Callword)
+	if !ok {
+		if !r.listening || strings.TrimSpace(body) == "" {
+			return ""
+		}
+		rest = strings.TrimSpace(body) // listening mode: every message is a prompt
+	}
+
+	// commands are only recognised with the callword, so that in listening
+	// mode a plain "/reset" is just a prompt
+	if ok {
+		switch strings.ToLower(rest) {
+		case "/listen":
+			r.listening = true
+			return "Listening: I will answer every message in this room. Use " + c.cfg.Callword + " /silence to stop."
+		case "/silence":
+			r.listening = false
+			return "Silenced: I will only answer messages starting with " + c.cfg.Callword + "."
+		}
+	}
 	switch strings.ToLower(rest) {
 	case "":
-		return "Usage: " + c.cfg.Callword + " <question>  |  " + c.cfg.Callword + " /reset"
+		if !ok {
+			return ""
+		}
+		return "Usage: " + c.cfg.Callword + " <question>  |  /reset  |  /listen  |  /silence"
 	case "/reset":
+		if !ok {
+			break
+		}
 		r.history = nil
 		return "Conversation reset."
 	}
